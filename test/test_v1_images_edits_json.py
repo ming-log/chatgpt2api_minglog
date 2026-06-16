@@ -45,10 +45,10 @@ class ImageEditsJsonApiTests(unittest.TestCase):
         response = self.client.post(
             "/v1/images/edits",
             headers=AUTH_HEADERS,
-            json={"model": "codex-gpt-image-2", "prompt": "保留 model", "image": PNG_DATA_URL},
+            json={"model": "custom-image-model", "prompt": "保留 model", "image": PNG_DATA_URL},
         )
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(self.calls[0]["model"], "codex-gpt-image-2")
+        self.assertEqual(self.calls[0]["model"], "custom-image-model")
 
     def test_image_edit_accepts_json_image_url(self):
         response = self.client.post(

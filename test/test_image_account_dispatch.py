@@ -35,7 +35,8 @@ class ImageAccountDispatchTests(unittest.TestCase):
             self.assertEqual(normalize_image_account_category(value), "paid")
         self.assertEqual(normalize_image_account_category("free"), "free")
 
-    def test_get_available_access_token_filters_by_account_category(self) -> None:
+    def test_image_dispatch_uses_all_accounts_regardless_of_type(self) -> None:
+        # 图片生成不再区分套餐：所有账号统一进入同一个反代号池。
         service = AccountService(MemoryStorage())
         service.add_account_items(
             [
@@ -49,31 +50,32 @@ class ImageAccountDispatchTests(unittest.TestCase):
 
         service.fetch_remote_info = fake_fetch_remote_info  # type: ignore[method-assign]
 
-        free_token = service.get_available_access_token()
-        service.release_image_slot(free_token)
-        paid_token = service.get_available_access_token("paid")
-        service.release_image_slot(paid_token)
+        seen: set[str] = set()
+        for _ in range(4):
+            token = service.get_available_access_token("free")
+            seen.add(token)
+            service.release_image_slot(token)
 
-        self.assertEqual(free_token, "free-token")
-        self.assertEqual(paid_token, "team-token")
+        self.assertEqual(seen, {"free-token", "team-token"})
 
-    def test_legacy_paid_account_type_request_matches_paid_category(self) -> None:
-        service = AccountService(MemoryStorage([{"access_token": "plus-token", "type": "plus", "quota": 2}]))
+    def test_paid_request_falls_back_to_any_available_account(self) -> None:
+        # 请求 paid 也能拿到 free 账号，因为不再有套餐限制。
+        service = AccountService(MemoryStorage([{"access_token": "free-token", "type": "free", "quota": 2}]))
 
         def fake_fetch_remote_info(access_token: str, event: str = "fetch_remote_info") -> dict[str, Any] | None:
             return service.get_account(access_token)
 
         service.fetch_remote_info = fake_fetch_remote_info  # type: ignore[method-assign]
 
-        token = service.get_available_access_token("plus")
+        token = service.get_available_access_token("paid")
         service.release_image_slot(token)
 
-        self.assertEqual(token, "plus-token")
+        self.assertEqual(token, "free-token")
 
-    def test_get_available_access_token_reports_missing_requested_type(self) -> None:
-        service = AccountService(MemoryStorage([{"access_token": "free-token", "type": "free", "quota": 2}]))
+    def test_get_available_access_token_reports_when_pool_empty(self) -> None:
+        service = AccountService(MemoryStorage([{"access_token": "free-token", "type": "free", "quota": 0}]))
 
-        with self.assertRaisesRegex(RuntimeError, "account type paid"):
+        with self.assertRaisesRegex(RuntimeError, "no available image quota"):
             service.get_available_access_token("paid")
 
 

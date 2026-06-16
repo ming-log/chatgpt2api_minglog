@@ -9,33 +9,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import {
   formatImageOutputSize,
-  isImageResolutionAllowedForAspectRatio,
   type ImageAspectRatio,
   type ImageQuality,
-  type ImageResolution,
 } from "@/lib/image-generation-options";
-import type { ImageAccountType } from "@/lib/api";
 
 type ImageComposerProps = {
   prompt: string;
   imageCount: string;
   imageAspectRatio: ImageAspectRatio;
-  imageResolution: ImageResolution;
   imageQuality: ImageQuality;
-  imageAccountType: ImageAccountType;
   imageOutputSize: string;
   activeTaskCount: number;
-  accountTypeOptions: ImageAccountType[];
-  isLoadingAccountTypes: boolean;
   referenceImages: Array<{ name: string; dataUrl: string }>;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   fileInputRef: RefObject<HTMLInputElement | null>;
   onPromptChange: (value: string) => void;
   onImageCountChange: (value: string) => void;
   onImageAspectRatioChange: (value: ImageAspectRatio) => void;
-  onImageResolutionChange: (value: ImageResolution) => void;
   onImageQualityChange: (value: ImageQuality) => void;
-  onImageAccountTypeChange: (value: ImageAccountType) => void;
   onSubmit: () => void | Promise<void>;
   onPickReferenceImage: () => void;
   onReferenceImageChange: (files: File[]) => void | Promise<void>;
@@ -46,22 +37,16 @@ export function ImageComposer({
   prompt,
   imageCount,
   imageAspectRatio,
-  imageResolution,
   imageQuality,
-  imageAccountType,
   imageOutputSize,
   activeTaskCount,
-  accountTypeOptions,
-  isLoadingAccountTypes,
   referenceImages,
   textareaRef,
   fileInputRef,
   onPromptChange,
   onImageCountChange,
   onImageAspectRatioChange,
-  onImageResolutionChange,
   onImageQualityChange,
-  onImageAccountTypeChange,
   onSubmit,
   onPickReferenceImage,
   onReferenceImageChange,
@@ -80,25 +65,12 @@ export function ImageComposer({
     { value: "3:4", label: "3:4 (竖版)" },
     { value: "9:16", label: "9:16 (竖版)" },
   ];
-  const imageResolutionOptions: Array<{ value: ImageResolution; label: string }> = [
-    { value: "1k", label: "1K" },
-    { value: "2k", label: "2K" },
-    { value: "4k", label: "4K" },
-  ];
-  const availableResolutionOptions = imageResolutionOptions.filter((option) =>
-    isImageResolutionAllowedForAspectRatio(option.value, imageAspectRatio),
-  );
   const imageQualityOptions: Array<{ value: ImageQuality; label: string }> = [
     { value: "auto", label: "自动" },
     { value: "low", label: "低" },
     { value: "medium", label: "中" },
     { value: "high", label: "高" },
   ];
-  const accountTypeLabels: Record<ImageAccountType, string> = {
-    free: "Free",
-    paid: "Team/Plus/Pro",
-  };
-  const canAdjustImageOptions = imageAccountType !== "free";
 
   const handleTextareaPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const imageFiles = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith("image/"));
@@ -229,27 +201,6 @@ export function ImageComposer({
                     />
                   </div>
                   <div className="flex h-8 shrink-0 items-center gap-1 rounded-full border border-stone-200 bg-white px-2 py-0.5 text-[11px] sm:h-9 sm:gap-1.5 sm:px-2.5">
-                    <span className="hidden font-medium text-stone-700 sm:inline">账号</span>
-                    {accountTypeOptions.length > 0 ? (
-                      <Select value={imageAccountType} onValueChange={(value) => onImageAccountTypeChange(value as ImageAccountType)}>
-                        <SelectTrigger className="h-6 w-[106px] rounded-full border-0 bg-transparent px-0 text-[11px] font-bold text-stone-700 shadow-none focus-visible:ring-0 sm:h-7 sm:w-[122px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent align="start" className="min-w-[154px]">
-                          {accountTypeOptions.map((option) => (
-                            <SelectItem key={option} value={option}>
-                              {accountTypeLabels[option]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <span className="min-w-[106px] text-[11px] font-bold text-stone-500 sm:min-w-[122px]">
-                        {isLoadingAccountTypes ? "加载中" : "无账号"}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex h-8 shrink-0 items-center gap-1 rounded-full border border-stone-200 bg-white px-2 py-0.5 text-[11px] sm:h-9 sm:gap-1.5 sm:px-2.5">
                     <span className="hidden font-medium text-stone-700 sm:inline">比例</span>
                     <Select value={imageAspectRatio} onValueChange={(value) => onImageAspectRatioChange(value as ImageAspectRatio)}>
                       <SelectTrigger className="h-6 w-[72px] rounded-full border-0 bg-transparent px-0 text-[11px] font-bold text-stone-700 shadow-none focus-visible:ring-0 min-[390px]:w-[88px] sm:h-7 sm:w-[108px]">
@@ -257,25 +208,6 @@ export function ImageComposer({
                       </SelectTrigger>
                       <SelectContent align="start" className="min-w-[168px]">
                         {imageAspectRatioOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex h-8 shrink-0 items-center gap-1 rounded-full border border-stone-200 bg-white px-2 py-0.5 text-[11px] sm:h-9 sm:gap-1.5 sm:px-2.5">
-                    <span className="hidden font-medium text-stone-700 sm:inline">大小</span>
-                    <Select
-                      value={imageResolution}
-                      onValueChange={(value) => onImageResolutionChange(value as ImageResolution)}
-                      disabled={!canAdjustImageOptions}
-                    >
-                      <SelectTrigger className="h-6 w-[46px] rounded-full border-0 bg-transparent px-0 text-[11px] font-bold text-stone-700 shadow-none focus-visible:ring-0 disabled:opacity-45 sm:h-7 sm:w-[58px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent align="start" className="min-w-[118px]">
-                        {availableResolutionOptions.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
                           </SelectItem>
@@ -291,7 +223,6 @@ export function ImageComposer({
                     <Select
                       value={imageQuality}
                       onValueChange={(value) => onImageQualityChange(value as ImageQuality)}
-                      disabled={!canAdjustImageOptions}
                     >
                       <SelectTrigger className="h-6 w-[46px] rounded-full border-0 bg-transparent px-0 text-[11px] font-bold text-stone-700 shadow-none focus-visible:ring-0 disabled:opacity-45 sm:h-7 sm:w-[58px]">
                         <SelectValue />

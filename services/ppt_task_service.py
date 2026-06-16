@@ -36,7 +36,7 @@ DEFAULT_TEXT_MODEL = "gpt-5.5"
 DEFAULT_IMAGE_MODEL = "gpt-image-2"
 DEFAULT_IMAGE_ACCOUNT_TYPE = "free"
 DEFAULT_IMAGE_QUALITY = "auto"
-DEFAULT_PPT_IMAGE_SIZE = "1024x576"
+DEFAULT_PPT_IMAGE_SIZE = "1672x941"
 PPTX_BUILD_VERSION = 4
 
 TASK_TYPE_CONTENT = "content"
@@ -315,7 +315,14 @@ def normalize_image_quality(value: object = None) -> str:
 
 def normalize_ppt_image_size(value: object = None) -> str:
     normalized = _clean(value).lower().replace(" ", "")
-    return PPT_IMAGE_SIZES.get(normalized, DEFAULT_PPT_IMAGE_SIZE)
+    if not normalized:
+        return DEFAULT_PPT_IMAGE_SIZE
+    if normalized in PPT_IMAGE_SIZES:
+        return PPT_IMAGE_SIZES[normalized]
+    # 允许任意 “宽x高” 像素尺寸直接透传（图片生成走对话反代，size 作为提示词使用）。
+    if re.fullmatch(r"\d{2,5}x\d{2,5}", normalized):
+        return normalized
+    return DEFAULT_PPT_IMAGE_SIZE
 
 
 def _normalize_master_layout(value: object, default: str = MASTER_LAYOUT_SINGLE_COLUMN) -> str:

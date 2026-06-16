@@ -12,7 +12,6 @@ AUTH_KEY = "chatgpt2api"
 BASE_URL = "http://localhost:8000"
 TEXT_MODEL = "auto"
 IMAGE_MODEL = "gpt-image-2"
-CODEX_IMAGE_MODEL = "codex-gpt-image-2"
 
 
 class ResponsesTests(unittest.TestCase):
@@ -216,98 +215,10 @@ class ResponsesTests(unittest.TestCase):
         for path in saved_paths:
             print(path)
 
-    def test_codex_image_response_http(self):
-        """测试 Responses 的 codex 画图非流式 HTTP 调用。"""
-        response = requests.post(
-            f"{BASE_URL}/v1/responses",
-            headers={"Authorization": f"Bearer {AUTH_KEY}"},
-            json={
-                "model": CODEX_IMAGE_MODEL,
-                "input": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "input_text", "text": "我想做一张南京城市宣传海报图。"},
-                        ],
-                    }
-                ],
-                "tools": [{"type": "image_generation"}],
-            },
-            timeout=300,
-        )
-        self.assertEqual(response.status_code, 200, response.text)
-        saved_paths = []
-        try:
-            payload = response.json()
-        except Exception:
-            payload = {}
-        for index, item in enumerate(payload.get("output") or [], start=1):
-            if not isinstance(item, dict):
-                continue
-            image_b64 = str(item.get("result") or "")
-            if image_b64:
-                saved_paths.append(save_image(image_b64, f"responses_codex_image_non_stream_{index}"))
-        print("responses codex image non-stream status:")
-        print(response.status_code)
-        print("responses codex image non-stream result:")
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
-        print("responses codex image non-stream saved files:")
-        for path in saved_paths:
-            print(path)
+    def test_codex_image_response_removed(self):
+        """codex 图片链路已移除，保留占位测试。"""
+        self.assertNotIn("codex-gpt-image-2", IMAGE_MODEL)
 
-    def test_codex_image_response_stream_http(self):
-        """测试 Responses 的 codex 画图流式 HTTP 调用。"""
-        response = requests.post(
-            f"{BASE_URL}/v1/responses",
-            headers={"Authorization": f"Bearer {AUTH_KEY}"},
-            json={
-                "model": CODEX_IMAGE_MODEL,
-                "input": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "input_text", "text": "我想做一张南京城市宣传海报图。"},
-                        ],
-                    }
-                ],
-                "tools": [{"type": "image_generation"}],
-                "stream": True,
-            },
-            stream=True,
-            timeout=300,
-        )
-        self.assertEqual(response.status_code, 200, response.text)
-        self.assertTrue(
-            response.headers.get("content-type", "").startswith("text/event-stream"),
-            response.headers.get("content-type", ""),
-        )
-        started_at = time.time()
-        saved_paths = []
-        print("responses codex image stream status:")
-        print(response.status_code)
-        print("responses codex image stream chunks:")
-        for text in self._iter_sse_payloads(response):
-            print(f"{time.time() - started_at:6.2f}s {text}")
-            if not text.startswith("data:"):
-                continue
-            payload_text = text[5:].strip()
-            if payload_text == "[DONE]":
-                break
-            try:
-                payload = json.loads(payload_text)
-            except Exception:
-                continue
-            if payload.get("type") != "response.output_item.done":
-                continue
-            item = payload.get("item") or {}
-            if str(item.get("type") or "") != "image_generation_call":
-                continue
-            image_b64 = str(item.get("result") or "")
-            if image_b64:
-                saved_paths.append(save_image(image_b64, f"responses_codex_image_stream_{len(saved_paths) + 1}"))
-        print("responses codex image stream saved files:")
-        for path in saved_paths:
-            print(path)
 
 
 if __name__ == "__main__":

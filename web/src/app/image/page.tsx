@@ -37,7 +37,7 @@ import {
   normalizeImageAspectRatio,
   normalizeImageQuality,
   normalizeImageResolutionForAspectRatio,
-  resolveImageOutputSize,
+  maxImageOutputSizeForAspectRatio,
   type ImageAspectRatio,
   type ImageQuality,
   type ImageResolution,
@@ -196,7 +196,7 @@ function buildGenerationConfigFromTurn(turn: ImageTurn): StoredImageGenerationCo
     model: normalizeSelectableImageModel(turn.model, accountType),
     accountType,
     count: Math.max(1, turn.count || turn.images.length || 1),
-    size: resolveImageOutputSize(resolution, aspectRatio),
+    size: maxImageOutputSizeForAspectRatio(aspectRatio),
     aspectRatio,
     resolution,
     quality: accountType === "free" ? "auto" : normalizeImageQuality(turn.quality),
@@ -411,8 +411,6 @@ function ImagePageContent() {
   const [conversations, setConversations] = useState<ImageConversation[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-  const [availableImageAccountTypes, setAvailableImageAccountTypes] = useState<ImageAccountType[]>([]);
-  const [isLoadingAccountTypes, setIsLoadingAccountTypes] = useState(true);
   const [lightboxImages, setLightboxImages] = useState<ImageLightboxItem[]>([]);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
@@ -425,16 +423,9 @@ function ImagePageContent() {
   >(null);
 
   const parsedCount = useMemo(() => Number(clampImageCount(imageCount)), [imageCount]);
-  const selectedImageResolution = useMemo(
-    () =>
-      imageAccountType === "free"
-        ? "1k"
-        : normalizeImageResolutionForAspectRatio(imageResolution, imageAspectRatio),
-    [imageAccountType, imageAspectRatio, imageResolution],
-  );
   const resolvedImageSize = useMemo(
-    () => resolveImageOutputSize(selectedImageResolution, imageAspectRatio),
-    [imageAspectRatio, selectedImageResolution],
+    () => maxImageOutputSizeForAspectRatio(imageAspectRatio),
+    [imageAspectRatio],
   );
   const selectedConversation = useMemo(
     () => conversations.find((item) => item.id === selectedConversationId) ?? null,
@@ -537,12 +528,9 @@ function ImagePageContent() {
     try {
       const data = await fetchImageAccountTypes();
       const nextTypes = normalizeImageAccountTypes(data.items);
-      setAvailableImageAccountTypes(nextTypes);
       setImageAccountType((current) => (nextTypes.includes(current) ? current : nextTypes[0] ?? "free"));
     } catch {
-      setAvailableImageAccountTypes([]);
-    } finally {
-      setIsLoadingAccountTypes(false);
+      setImageAccountType("free");
     }
   }, []);
 
@@ -1236,7 +1224,7 @@ function ImagePageContent() {
         mode: sourceTurn.mode,
         referenceImages: sourceTurn.referenceImages,
         count,
-        size: resolveImageOutputSize(resolution, aspectRatio),
+        size: maxImageOutputSizeForAspectRatio(aspectRatio),
         aspectRatio,
         resolution,
         quality,
@@ -1332,7 +1320,7 @@ function ImagePageContent() {
     const effectiveResolution =
       imageAccountType === "free" ? "1k" : normalizeImageResolutionForAspectRatio(imageResolution, imageAspectRatio);
     const effectiveQuality = imageAccountType === "free" ? "auto" : imageQuality;
-    const effectiveSize = resolveImageOutputSize(effectiveResolution, imageAspectRatio);
+    const effectiveSize = maxImageOutputSizeForAspectRatio(imageAspectRatio);
 
     const targetConversation = selectedConversationId
       ? conversationsRef.current.find((conversation) => conversation.id === selectedConversationId) ?? null
@@ -1512,22 +1500,16 @@ function ImagePageContent() {
                 prompt={imagePrompt}
                 imageCount={imageCount}
                 imageAspectRatio={imageAspectRatio}
-                imageResolution={selectedImageResolution}
                 imageQuality={imageQuality}
-                imageAccountType={imageAccountType}
                 imageOutputSize={resolvedImageSize}
                 activeTaskCount={activeTaskCount}
-                accountTypeOptions={availableImageAccountTypes}
-                isLoadingAccountTypes={isLoadingAccountTypes}
                 referenceImages={referenceImages}
                 textareaRef={textareaRef}
                 fileInputRef={fileInputRef}
                 onPromptChange={setImagePrompt}
                 onImageCountChange={(value) => setImageCount(value ? clampImageCount(value) : "")}
                 onImageAspectRatioChange={setImageAspectRatio}
-                onImageResolutionChange={setImageResolution}
                 onImageQualityChange={setImageQuality}
-                onImageAccountTypeChange={setImageAccountType}
                 onSubmit={handleSubmit}
                 onPickReferenceImage={() => fileInputRef.current?.click()}
                 onReferenceImageChange={handleReferenceImageChange}

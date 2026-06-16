@@ -120,9 +120,8 @@ class AccountService:
 
     @staticmethod
     def _account_matches_type(account: dict, account_type: str | None) -> bool:
-        requested = _normalize_requested_account_type(account_type)
-        current = _normalize_requested_account_type(account.get("type"))
-        return current == requested
+        # 图片生成不再区分账号套餐类型，所有账号统一按 free 方式参与反代调度。
+        return True
 
     def _normalize_account(self, item: dict) -> dict | None:
         if not isinstance(item, dict):
