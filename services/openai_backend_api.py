@@ -49,19 +49,6 @@ class ChatRequirements:
 DEFAULT_CLIENT_VERSION = "prod-be885abbfcfe7b1f511e88b3003d9ee44757fbad"
 DEFAULT_CLIENT_BUILD_NUMBER = "5955942"
 DEFAULT_POW_SCRIPT = "https://chatgpt.com/backend-api/sentinel/sdk.js"
-CODEX_IMAGE_MODEL = "codex-gpt-image-2"
-CODEX_IMAGE_TOOL_MODEL = "gpt-image-2"
-CODEX_RESPONSES_PATH = "/backend-api/codex/responses"
-DEFAULT_CODEX_IMAGE_RESPONSES_MODEL = "gpt-5.4-mini"
-DEFAULT_CODEX_USER_AGENT = "codex_cli_rs/0.118.0 (Windows 10.0.0; x86_64) chatgpt2api/0.1.0"
-DEFAULT_CODEX_ORIGINATOR = "codex_cli_rs"
-CODEX_OFFICIAL_EMPTY_HEADERS = (
-    "version",
-    "x-codex-turn-state",
-    "x-codex-turn-metadata",
-    "x-client-request-id",
-    "x-responsesapi-include-timing-metrics",
-)
 PLAN_TYPE_SCORES = {
     "free": 0,
     "plus": 10,
@@ -564,8 +551,6 @@ class OpenAIBackendAPI:
             return "auto"
         if model == "gpt-image-2":
             return "gpt-5-3"
-        if model == CODEX_IMAGE_MODEL:
-            return model
         return "auto"
 
     def _image_headers(self, path: str, requirements: ChatRequirements, conduit_token: str = "", accept: str = "*/*") -> \
@@ -583,28 +568,6 @@ class OpenAIBackendAPI:
         if accept == "text/event-stream":
             headers["X-Oai-Turn-Trace-Id"] = new_uuid()
         return self._headers(path, headers)
-
-    def _codex_responses_headers(self, accept: str = "text/event-stream") -> Dict[str, str]:
-        """构造 Codex Responses 上游请求头。
-
-        这条链路使用 Codex Responses 的 image_generation tool，可以结构化传递 size/quality。
-        """
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-            "Accept": accept,
-            "Content-Type": "application/json",
-            "User-Agent": DEFAULT_CODEX_USER_AGENT,
-            "Originator": DEFAULT_CODEX_ORIGINATOR,
-            "Connection": "Keep-Alive",
-            "session_id": new_uuid(),
-            "conversation_id": new_uuid(),
-        }
-        for key in CODEX_OFFICIAL_EMPTY_HEADERS:
-            headers[key] = ""
-        account_id = self._chatgpt_account_id()
-        if account_id:
-            headers["ChatGPT-Account-Id"] = account_id
-        return headers
 
     def _prepare_image_conversation(self, prompt: str, requirements: ChatRequirements, model: str) -> str:
         """为图片生成准备 conduit token。"""
@@ -671,144 +634,6 @@ class OpenAIBackendAPI:
         data = self._decode_image_base64(text)
         mime_type = self._mime_type_from_image_bytes(data)
         return f"data:{mime_type};base64,{base64.b64encode(data).decode('ascii')}"
-
-    def _canonical_image_tool_model(self, model: str) -> str:
-        model = str(model or "").strip()
-        if model in {"", "gpt-image-2", CODEX_IMAGE_MODEL}:
-            return CODEX_IMAGE_TOOL_MODEL
-        return CODEX_IMAGE_TOOL_MODEL
-
-    def _build_codex_image_response_body(
-            self,
-            prompt: str,
-            model: str,
-            images: Optional[list[str]] = None,
-            size: object = None,
-            quality: object = None,
-    ) -> Dict[str, Any]:
-        images = images or []
-        content: list[Dict[str, Any]] = [{"type": "input_text", "text": prompt}]
-        for image in images:
-            image_url = self._image_data_url(image)
-            if image_url:
-                content.append({"type": "input_image", "image_url": image_url})
-
-        tool: Dict[str, Any] = {
-            "type": "image_generation",
-            "action": "edit" if images else "generate",
-            "model": self._canonical_image_tool_model(model),
-        }
-        size_text = str(size or "").strip()
-        if size_text:
-            tool["size"] = size_text
-        quality_text = str(quality or "").strip()
-        if quality_text:
-            tool["quality"] = quality_text
-
-        return {
-            "instructions": "",
-            "stream": True,
-            "reasoning": {
-                "effort": "medium",
-                "summary": "auto",
-            },
-            "parallel_tool_calls": True,
-            "include": ["reasoning.encrypted_content"],
-            "model": DEFAULT_CODEX_IMAGE_RESPONSES_MODEL,
-            "store": False,
-            "tool_choice": {
-                "type": "image_generation",
-            },
-            "input": [{
-                "type": "message",
-                "role": "user",
-                "content": content,
-            }],
-            "tools": [tool],
-        }
-
-    def _start_codex_image_response(
-            self,
-            prompt: str,
-            model: str,
-            images: Optional[list[str]] = None,
-            size: object = None,
-            quality: object = None,
-    ) -> requests.Response:
-        if not self.access_token:
-            raise RuntimeError("access_token is required for Codex image responses")
-        payload = self._build_codex_image_response_body(prompt, model, images, size, quality)
-        response = self.session.post(
-            self.base_url + CODEX_RESPONSES_PATH,
-            headers=self._codex_responses_headers("text/event-stream"),
-            json=payload,
-            timeout=300,
-            stream=True,
-        )
-        ensure_ok(response, CODEX_RESPONSES_PATH)
-        return response
-
-    def stream_codex_image_response_events(
-            self,
-            prompt: str,
-            model: str,
-            images: Optional[list[str]] = None,
-            size: object = None,
-            quality: object = None,
-    ) -> Iterator[Dict[str, Any]]:
-        for attempt in range(1, IMAGE_TRANSPORT_RETRY_ATTEMPTS + 1):
-            response: requests.Response | None = None
-            try:
-                response = self._start_codex_image_response(prompt, model, images, size, quality)
-                saw_sse_payload = False
-                raw_lines: list[str] = []
-                for raw_line in response.iter_lines():
-                    if not raw_line:
-                        continue
-                    line = raw_line.decode("utf-8", errors="ignore") if isinstance(raw_line, bytes) else str(raw_line)
-                    if line.startswith("data:"):
-                        saw_sse_payload = True
-                        payload = line[5:].strip()
-                        if not payload or payload == "[DONE]":
-                            continue
-                        try:
-                            event = json.loads(payload)
-                        except json.JSONDecodeError:
-                            logger.debug({"event": "codex_image_response_non_json_sse", "payload": payload[:500]})
-                            continue
-                        if isinstance(event, dict):
-                            yield event
-                    else:
-                        raw_lines.append(line)
-                if not saw_sse_payload and raw_lines:
-                    payload = "\n".join(raw_lines).strip()
-                    if payload:
-                        event = json.loads(payload)
-                        if isinstance(event, dict):
-                            yield event
-                return
-            except UpstreamHTTPError as exc:
-                if exc.status_code not in IMAGE_TRANSPORT_RETRY_STATUSES or attempt >= IMAGE_TRANSPORT_RETRY_ATTEMPTS:
-                    raise
-                logger.warning({
-                    "event": "codex_image_response_retry",
-                    "attempt": attempt,
-                    "status_code": exc.status_code,
-                    "error": str(exc),
-                })
-                _image_transport_retry_sleep(attempt)
-            except requests.exceptions.RequestException as exc:
-                if not is_transient_upstream_connection_error(exc) or attempt >= IMAGE_TRANSPORT_RETRY_ATTEMPTS:
-                    raise
-                logger.warning({
-                    "event": "codex_image_response_retry",
-                    "attempt": attempt,
-                    "error": str(exc),
-                })
-                _image_transport_retry_sleep(attempt)
-            finally:
-                if response is not None:
-                    response.close()
 
     def _upload_image(self, image: str, file_name: str = "image.png") -> Dict[str, Any]:
         """上传一张 base64 图片，返回底层文件元数据。"""

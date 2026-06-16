@@ -11,7 +11,7 @@ from curl_cffi import requests
 from fastapi import HTTPException
 from utils.log import logger
 
-IMAGE_MODELS = {"gpt-image-2", "codex-gpt-image-2"}
+IMAGE_MODELS = {"gpt-image-2"}
 OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 
 SUPPORTED_JSON_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"}

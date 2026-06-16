@@ -67,6 +67,18 @@ export function resolveImageOutputSize(resolution: ImageResolution, aspectRatio:
   return `${width}x${height}`;
 }
 
+// 上游对话链路单张图片的面积上限（约 1.57MP，例如 16:9 ≈ 1672×941）。
+// 不再让用户选择分辨率，直接按所选比例占满这个面积，得到允许范围内的最大分辨率。
+const MAX_IMAGE_AREA = 1672 * 941;
+
+export function maxImageOutputSizeForAspectRatio(aspectRatio: ImageAspectRatio) {
+  const normalizedAspectRatio = normalizeImageAspectRatio(aspectRatio);
+  const [ratioWidth, ratioHeight] = ASPECT_RATIOS[normalizedAspectRatio];
+  const width = Math.round(Math.sqrt(MAX_IMAGE_AREA * (ratioWidth / ratioHeight)));
+  const height = Math.round(Math.sqrt(MAX_IMAGE_AREA * (ratioHeight / ratioWidth)));
+  return `${width}x${height}`;
+}
+
 export function formatImageOutputSize(size: string) {
   return size.replace("x", " x ");
 }

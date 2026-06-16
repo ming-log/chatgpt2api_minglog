@@ -73,7 +73,7 @@ import {
 import {
   normalizeImageQuality,
   normalizeImageResolution,
-  resolveImageOutputSize,
+  maxImageOutputSizeForAspectRatio,
   type ImageQuality,
   type ImageResolution,
 } from "@/lib/image-generation-options";
@@ -691,8 +691,6 @@ function PptPageContent() {
   const [imageAccountType, setImageAccountType] = useState<ImageAccountType>(DEFAULT_IMAGE_ACCOUNT_TYPE);
   const [imageResolution, setImageResolution] = useState<ImageResolution>(DEFAULT_IMAGE_RESOLUTION);
   const [imageQuality, setImageQuality] = useState<ImageQuality>(DEFAULT_IMAGE_QUALITY);
-  const [availableImageAccountTypes, setAvailableImageAccountTypes] = useState<ImageAccountType[]>([]);
-  const [isLoadingImageAccountTypes, setIsLoadingImageAccountTypes] = useState(true);
   const [masterTask, setMasterTask] = useState<PptTask | null>(null);
   const [plan, setPlan] = useState<PptPlan | null>(null);
   const [planTask, setPlanTask] = useState<PptTask | null>(null);
@@ -754,9 +752,8 @@ function PptPageContent() {
   const parsedTileSize = useMemo(() => normalizeTileSize(tileSize), [tileSize]);
   const isExternalImageProvider = imageProviderMode === "external";
   const imageProviderBaseUrl = isExternalImageProvider ? providerRequestBaseUrl(imageBaseUrl, backendBaseUrlHint) : "";
-  const effectiveImageResolution = normalizeImageResolution(imageResolution);
   const effectiveImageQuality = normalizeImageQuality(imageQuality);
-  const effectivePptImageSize = resolveImageOutputSize(effectiveImageResolution, PPT_IMAGE_ASPECT_RATIO);
+  const effectivePptImageSize = maxImageOutputSizeForAspectRatio(PPT_IMAGE_ASPECT_RATIO);
   const imageProviderConfig = useMemo(
     () => ({
       imageBaseUrl: imageProviderBaseUrl,
@@ -996,13 +993,9 @@ function PptPageContent() {
     try {
       const data = await fetchImageAccountTypes();
       const nextTypes = normalizeImageAccountTypes(data.items);
-      setAvailableImageAccountTypes(nextTypes);
       setImageAccountType((current) => (nextTypes.includes(current) ? current : nextTypes[0] ?? DEFAULT_IMAGE_ACCOUNT_TYPE));
     } catch {
-      setAvailableImageAccountTypes([]);
       setImageAccountType(DEFAULT_IMAGE_ACCOUNT_TYPE);
-    } finally {
-      setIsLoadingImageAccountTypes(false);
     }
   }, []);
 
@@ -2247,15 +2240,6 @@ function PptPageContent() {
     }
   };
 
-  const accountTypeLabels: Record<ImageAccountType, string> = {
-    free: "Free",
-    paid: "Team/Plus/Pro",
-  };
-  const imageResolutionOptions: Array<{ value: ImageResolution; label: string }> = [
-    { value: "1k", label: "1K" },
-    { value: "2k", label: "2K" },
-    { value: "4k", label: "4K" },
-  ];
   const imageQualityOptions: Array<{ value: ImageQuality; label: string }> = [
     { value: "auto", label: "自动" },
     { value: "low", label: "低" },
@@ -2771,7 +2755,7 @@ function PptPageContent() {
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-stone-900">图片服务</div>
                 <div className="mt-0.5 truncate text-xs text-stone-500">
-                  {isExternalImageProvider ? `外部 API · ${imageProviderBaseUrl || "未配置接口"}` : `当前内置服务 · ${accountTypeLabels[imageAccountType]}`} · 16:9 {effectiveImageResolution.toUpperCase()} · {effectiveImageQuality} · 并行 {parsedConcurrency}
+                  {isExternalImageProvider ? `外部 API · ${imageProviderBaseUrl || "未配置接口"}` : "当前内置服务"} · 16:9 {effectivePptImageSize.replace("x", " x ")} · {effectiveImageQuality} · 并行 {parsedConcurrency}
                 </div>
               </div>
             </button>
@@ -2819,29 +2803,7 @@ function PptPageContent() {
                     <Input type="password" value={imageApiKey} onChange={(event) => setImageApiKey(event.target.value)} className="h-10 rounded-lg border-stone-200 bg-white text-xs" placeholder="外部 API 必填" />
                   </label>
                 </>
-              ) : (
-                <label className="grid min-w-0 gap-1.5">
-                  <span className="text-xs font-medium text-stone-600">账号</span>
-                  {availableImageAccountTypes.length > 0 ? (
-                  <Select value={imageAccountType} onValueChange={(value) => setImageAccountType(value as ImageAccountType)}>
-                    <SelectTrigger className="h-10 rounded-lg border-stone-200 bg-white text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableImageAccountTypes.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {accountTypeLabels[option]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <div className="flex h-10 items-center rounded-lg border border-stone-200 bg-stone-50 px-3 text-xs text-stone-500">
-                    {isLoadingImageAccountTypes ? "加载中" : "无可用账号"}
-                  </div>
-                )}
-                </label>
-              )}
+              ) : null}
               <label className="grid min-w-0 gap-1.5">
                 <span className="text-xs font-medium text-stone-600">图片模型</span>
                 <Input value={imageModel} onChange={(event) => setImageModel(event.target.value)} className="h-10 rounded-lg border-stone-200 bg-white text-xs" placeholder={DEFAULT_IMAGE_MODEL} />
@@ -2852,24 +2814,6 @@ function PptPageContent() {
                   <span>16:9</span>
                   <span>{effectivePptImageSize.replace("x", " x ")}</span>
                 </div>
-              </label>
-              <label className="grid min-w-0 gap-1.5">
-                <span className="text-xs font-medium text-stone-600">大小</span>
-                <Select
-                  value={effectiveImageResolution}
-                  onValueChange={(value) => setImageResolution(value as ImageResolution)}
-                >
-                  <SelectTrigger className="h-10 rounded-lg border-stone-200 bg-white text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {imageResolutionOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </label>
               <label className="grid min-w-0 gap-1.5">
                 <span className="text-xs font-medium text-stone-600">质量</span>

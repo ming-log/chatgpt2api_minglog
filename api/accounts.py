@@ -210,9 +210,9 @@ def create_router() -> APIRouter:
     async def get_image_account_types(authorization: str | None = Header(default=None)):
         require_identity(authorization)
         accounts = account_service.list_accounts()
-        found = {_image_account_type(item.get("type")) for item in accounts}
+        # 图片生成不再区分账号套餐，所有账号统一按 free 参与反代调度。
         return {
-            "items": [item for item in IMAGE_ACCOUNT_TYPE_ORDER if item in found],
+            "items": ["free"] if accounts else [],
             "available_quota": _image_available_quota(accounts),
         }
 

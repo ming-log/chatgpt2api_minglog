@@ -12,7 +12,7 @@ import tiktoken
 from services.account_service import account_service
 from services.config import config
 from services.image_storage_service import image_storage_service
-from services.openai_backend_api import CODEX_IMAGE_MODEL, ImagePollTimeoutError, OpenAIBackendAPI
+from services.openai_backend_api import ImagePollTimeoutError, OpenAIBackendAPI
 from utils.helper import IMAGE_MODELS, extract_image_from_message_content, is_transient_upstream_connection_error
 from utils.log import logger
 
@@ -155,54 +155,6 @@ def build_image_prompt(prompt: str, size: str | None) -> str:
         "3:4": "输出为 3:4 比例，纵向构图，适合人物肖像或竖向场景。",
     }[size]
     return f"{prompt.strip()}\n\n{hint}"
-
-
-PAID_IMAGE_ACCOUNT_TYPES = {"paid", "plus", "team", "business", "enterprise", "edu", "pro", "prolite"}
-
-
-def _normalize_account_type(value: object) -> str:
-    return str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
-
-
-def should_use_codex_responses_image_path(request: "ConversationRequest") -> bool:
-    model = str(request.model or "").strip()
-    account_type = _normalize_account_type(request.account_type)
-    return model == CODEX_IMAGE_MODEL or account_type in PAID_IMAGE_ACCOUNT_TYPES
-
-
-def _response_payload_root(event: dict[str, Any]) -> dict[str, Any]:
-    response = event.get("response")
-    return response if isinstance(response, dict) else event
-
-
-def _codex_image_items_from_event(event: dict[str, Any]) -> list[dict[str, Any]]:
-    candidates: list[dict[str, Any]] = []
-    item = event.get("item")
-    if isinstance(item, dict):
-        candidates.append(item)
-
-    root = _response_payload_root(event)
-    output = root.get("output")
-    if isinstance(output, list):
-        candidates.extend(item for item in output if isinstance(item, dict))
-
-    items: list[dict[str, Any]] = []
-    for candidate in candidates:
-        if str(candidate.get("type") or "") != "image_generation_call":
-            continue
-        result = str(candidate.get("result") or "").strip()
-        if not result:
-            continue
-        if result.startswith("data:") and "," in result:
-            result = result.split(",", 1)[1].strip()
-        if not result:
-            continue
-        revised_prompt = str(candidate.get("revised_prompt") or "").strip()
-        items.append({
-            "b64_json": result,
-            "revised_prompt": revised_prompt,
-        })
-    return items
 
 
 def encoding_for_model(model: str):
@@ -597,10 +549,6 @@ def stream_image_outputs(
         index: int = 1,
         total: int = 1,
 ) -> Iterator[ImageOutput]:
-    if should_use_codex_responses_image_path(request):
-        yield from stream_codex_responses_image_outputs(backend, request, index, total)
-        return
-
     last: dict[str, Any] = {}
     try:
         for event in conversation_events(
@@ -677,48 +625,6 @@ def stream_image_outputs(
 
     if message:
         yield ImageOutput(kind="message", model=request.model, index=index, total=total, text=message)
-
-
-def stream_codex_responses_image_outputs(
-        backend: OpenAIBackendAPI,
-        request: ConversationRequest,
-        index: int = 1,
-        total: int = 1,
-) -> Iterator[ImageOutput]:
-    last_event_type = ""
-    for event in backend.stream_codex_image_response_events(
-            prompt=prompt_with_global_system(request.prompt),
-            model=request.model,
-            images=request.images or [],
-            size=request.size,
-            quality=request.quality,
-    ):
-        event_type = str(event.get("type") or "")
-        if event_type and event_type != last_event_type:
-            last_event_type = event_type
-            yield ImageOutput(
-                kind="progress",
-                model=request.model,
-                index=index,
-                total=total,
-                upstream_event_type=event_type,
-            )
-
-        image_items = _codex_image_items_from_event(event)
-        if not image_items:
-            continue
-        data = format_image_result(
-            image_items,
-            request.prompt,
-            request.response_format,
-            request.base_url,
-            int(time.time()),
-        )["data"]
-        if data:
-            yield ImageOutput(kind="result", model=request.model, index=index, total=total, data=data)
-            return
-
-    raise RuntimeError("upstream did not return image output")
 
 
 def stream_image_outputs_with_pool(request: ConversationRequest) -> Iterator[ImageOutput]:
